@@ -69,6 +69,9 @@ pub fn run(context: runestick::Context, options: rune::Options) -> Result<()> {
 
     server.request_handler::<lsp::request::GotoDefinition, _, _>(goto_definition);
 
+    server.request_handler::<lsp::request::Completion, _, _>(completion);
+    server.request_handler::<lsp::request::ResolveCompletionItem, _, _>(resolve);
+
     server.notification_handler::<lsp::notification::DidOpenTextDocument, _, _>(
         did_open_text_document,
     );
@@ -125,6 +128,13 @@ async fn initialize(
     ));
 
     capabilities.definition_provider = Some(true);
+    capabilities.completion_provider = Some(lsp::CompletionOptions {
+        resolve_provider: Some(true),
+        trigger_characters: Some(vec![".".into()]),
+        work_done_progress_options: lsp::WorkDoneProgressOptions {
+            work_done_progress: None,
+        },
+    });
 
     let server_info = lsp::ServerInfo {
         name: String::from("Rune Language Server"),
@@ -159,7 +169,44 @@ async fn goto_definition(
     Ok(position.map(lsp::GotoDefinitionResponse::Scalar))
 }
 
-/// Handle open text document.
+/// Handle initialized notification.
+async fn completion(
+    state: State,
+    output: Output,
+    params: lsp::CompletionParams,
+) -> Result<Option<lsp::CompletionResponse>> {
+    output
+        .log(lsp::MessageType::Info, format!("comp req: {:?}", params))
+        .await?;
+    let results = state
+        .complete(
+            &params.text_document_position.text_document.uri,
+            params.text_document_position.position,
+        )
+        .await;
+
+    let results = results.map(lsp::CompletionResponse::Array);
+    output
+        .log(lsp::MessageType::Info, format!("completion: {:?}", results))
+        .await?;
+
+    Ok(results)
+}
+
+/// Handle initialized notification.
+async fn resolve(
+    state: State,
+    output: Output,
+    mut item: lsp::CompletionItem,
+) -> Result<lsp::CompletionItem> {
+    output
+        .log(lsp::MessageType::Info, format!("resolve: {:?}", item))
+        .await?;
+    item.documentation = Some(lsp::Documentation::String("hello".into()));
+    Ok(item)
+}
+
+/// handle open text document.
 async fn did_open_text_document(
     state: State,
     _: Output,

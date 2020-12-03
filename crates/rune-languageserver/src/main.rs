@@ -48,26 +48,7 @@ use anyhow::{bail, Result};
 use std::env;
 
 fn setup_logging() -> Result<()> {
-    // Set environment variable to get the language server to trace log to the
-    // given file.
-    if let Some(log_path) = std::env::var_os("RUNE_TRACE_LOG_FILE") {
-        use log::LevelFilter;
-        use log4rs::append::file::FileAppender;
-        use log4rs::config::{Appender, Config, Root};
-        use log4rs::encode::pattern::PatternEncoder;
-
-        let logfile = FileAppender::builder()
-            .encoder(Box::new(PatternEncoder::default()))
-            .build(log_path)?;
-
-        let config = Config::builder()
-            .appender(Appender::builder().build("logfile", Box::new(logfile)))
-            .build(Root::builder().appender("logfile").build(LevelFilter::Info))?;
-
-        log4rs::init_config(config)?;
-    }
-
-    Ok(())
+    loge::try_init_custom_with_file("rune-lsp.log", log::Level::Info, loge::LogeFormat::Fileline)
 }
 
 fn main() -> Result<()> {

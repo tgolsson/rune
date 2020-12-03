@@ -103,6 +103,143 @@ impl State {
         Some(location)
     }
 
+    /// Find definition at the given uri and LSP position.
+    pub async fn complete(
+        &self,
+        uri: &Url,
+        position: lsp::Position,
+    ) -> Option<Vec<lsp::CompletionItem>> {
+        let sources = self.inner.sources.read().await;
+        let source = sources.get(uri)?;
+        let offset = source.lsp_position_to_offset(position);
+        let (mut symbol, start) = source.looking_back(offset)?;
+
+        let item = runestick::Item::with_item(symbol.split("::"));
+        let span = Span::new(start + 1, offset);
+        let range = source.span_to_lsp_range(span);
+        let mut results = vec![];
+
+        let can_use_instance_fn: &[_] = &[']', '.', ')'];
+        let untrimmed_length = symbol.len();
+        let first_char = symbol.remove(0);
+
+        if let Some(unit) = &source.unit {
+            if let Some(debug_info) = unit.debug_info() {
+                for function in debug_info.functions.values() {
+                    let func_name = format!("{}", function.path);
+
+                    if func_name.starts_with(&symbol) {
+                        results.push(lsp::CompletionItem {
+                            label: format!("{}", function.path),
+                            kind: Some(lsp::CompletionItemKind::Function),
+                            detail: Some("qwe".to_owned()),
+                            documentation: Some(lsp::Documentation::String(format!(
+                                "{}",
+                                function.path
+                            ))),
+                            deprecated: Some(false),
+                            preselect: Some(true),
+                            sort_text: None,
+                            filter_text: None,
+                            insert_text: None,
+                            insert_text_format: None,
+                            text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                                range,
+                                new_text: format!("{}", function.path),
+                            })),
+                            additional_text_edits: None,
+                            command: None,
+                            data: Some("x".into()),
+                            tags: None,
+                        })
+                    }
+                }
+            }
+        }
+
+        if first_char.is_ascii_alphabetic() || can_use_instance_fn.contains(&first_char) {
+            for info in self.inner.context.iter_functions() {
+                let (prefix, kind, _args, name) = match info.1 {
+                    runestick::ContextSignature::Instance {
+                        item, args, name, ..
+                    } => (
+                        item.clone(),
+                        lsp::CompletionItemKind::Function,
+                        args,
+                        name.clone(),
+                    ),
+                    _ => continue,
+                };
+                let func_name = format!("{}", name).trim_start_matches("::").to_owned();
+
+                if func_name.starts_with(&symbol) {
+                    results.push(lsp::CompletionItem {
+                        label: func_name.clone(),
+                        kind: Some(kind),
+                        detail: Some(format!("{}", prefix)),
+                        documentation: Some(lsp::Documentation::String(format!(
+                            "{}::{}",
+                            prefix, item
+                        ))),
+                        deprecated: Some(false),
+                        preselect: Some(true),
+                        sort_text: None,
+                        filter_text: None,
+                        insert_text: None,
+                        insert_text_format: None,
+                        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                            range,
+                            new_text: func_name,
+                        })),
+                        additional_text_edits: None,
+                        command: None,
+                        data: Some(symbol.clone().into()),
+                        tags: None,
+                    })
+                }
+            }
+        } else {
+            let trimmed_length = symbol.trim().len();
+            let delta = untrimmed_length - trimmed_length;
+            let span = Span::new(start + delta, offset);
+            let range = source.span_to_lsp_range(span);
+
+            for info in self.inner.context.iter_functions() {
+                let (item, kind, args) = match info.1 {
+                    runestick::ContextSignature::Function { item, args, .. } => {
+                        (item.clone(), lsp::CompletionItemKind::Function, args)
+                    }
+                    _ => continue,
+                };
+                let func_name = format!("{}", item).trim_start_matches("::").to_owned();
+
+                if func_name.starts_with(&symbol.trim()) {
+                    results.push(lsp::CompletionItem {
+                        label: func_name.clone(),
+                        kind: Some(kind),
+                        detail: Some(format!("{} arguments", args.unwrap_or(0))),
+                        documentation: Some(lsp::Documentation::String(func_name.clone())),
+                        deprecated: Some(false),
+                        preselect: None,
+                        sort_text: None,
+                        filter_text: None,
+                        insert_text: None,
+                        insert_text_format: None,
+                        text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+                            range,
+                            new_text: func_name,
+                        })),
+                        additional_text_edits: None,
+                        command: None,
+                        data: Some(symbol.trim().into()),
+                        tags: None,
+                    })
+                }
+            }
+        }
+        Some(results)
+    }
+
     /// Rebuild the current project.
     pub async fn rebuild(&self, output: &Output) -> Result<()> {
         let mut inner = self.inner.sources.write().await;
@@ -206,7 +343,7 @@ impl State {
                         }
                     }
                 }
-            }
+            };
 
             for warning in &warnings {
                 report(
@@ -219,13 +356,16 @@ impl State {
                 );
             }
 
-            builds.push((url.clone(), sources, index));
+            builds.push((url.clone(), sources, index, result));
         }
 
-        for (url, build_sources, index) in builds {
+        for (url, build_sources, index, result) in builds {
             if let Some(source) = inner.sources.get_mut(&url) {
                 source.index = index;
                 source.build_sources = Some(build_sources);
+                if let Ok(unit) = result {
+                    source.unit = Some(unit);
+                }
             }
         }
 
@@ -275,6 +415,7 @@ impl Sources {
             content: Rope::from(text),
             index: Default::default(),
             build_sources: None,
+            unit: None,
         };
 
         self.sources.insert(url, source)
@@ -307,6 +448,9 @@ pub struct Source {
     /// Loaded Rune sources for this source file. Will be present after the
     /// source file has been built.
     build_sources: Option<rune::Sources>,
+
+    /// Compiled built unit
+    unit: Option<runestick::Unit>,
 }
 
 impl Source {
@@ -368,6 +512,23 @@ impl Source {
     /// Iterate over the text chunks in the source.
     pub fn chunks(&self) -> impl Iterator<Item = &str> {
         self.content.chunks()
+    }
+
+    /// Returns the best match wordwise when looking back
+    pub fn looking_back(&self, offset: usize) -> Option<(String, usize)> {
+        let (chunk, start_byte, _, _) = self.content.chunk_at_byte(offset);
+
+        // this is everything that delimits one "item" from another... some of these will cause it to behave as static inference
+        let x: &[_] = &[',', ';', ')', '(', '.', '=', '+', '-', '*', '/'];
+        let end_search = offset - start_byte + 1;
+        if let Some(looking_back) = chunk[..end_search].rfind(x) {
+            Some((
+                chunk[looking_back..end_search].trim().to_owned(),
+                start_byte + looking_back,
+            ))
+        } else {
+            None
+        }
     }
 }
 

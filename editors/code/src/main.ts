@@ -12,6 +12,7 @@ import { log, isValidExecutable, assert, pathExists } from './util'
 import { fetchRelease, download } from './net';
 import { PersistentState } from './persistent_state';
 import { load } from './settings';
+import { DebugAdapterServer } from 'vscode';
 export async function activate(context: vscode.ExtensionContext) {
     log.info('activating rune language server...');
     await tryActivate(context).catch(err => {
