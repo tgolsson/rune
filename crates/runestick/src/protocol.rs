@@ -85,6 +85,12 @@ impl Protocol {
         hash: Hash::new(0xadb5b27e2a4d2dec),
     };
 
+    /// The function to access an index.
+    pub const SLICE_GET: Protocol = Protocol {
+        name: "slice_get",
+        hash: Hash::new(0x5acad18738417eb0),
+    };
+
     /// The function to set an index.
     pub const INDEX_SET: Protocol = Protocol {
         name: "index_set",

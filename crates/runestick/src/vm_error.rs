@@ -266,7 +266,7 @@ pub enum VmErrorKind {
     },
     #[error("`{target}` missing index `{index:?}`")]
     MissingIndexKey { target: TypeInfo, index: Key },
-    #[error("index out of bounds: the len is ${len} but the index is {index}")]
+    #[error("index out of bounds: the len is {len} but the index is {index}")]
     OutOfRange {
         index: VmIntegerRepr,
         len: VmIntegerRepr,

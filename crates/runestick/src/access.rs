@@ -184,7 +184,6 @@ impl Access {
         }
 
         let n = state.wrapping_sub(1);
-
         if n >= 0 {
             return Err(NotAccessibleRef(Snapshot(self.0.get())));
         }
@@ -297,6 +296,54 @@ pub struct RawSharedGuard(*const Access);
 impl Drop for RawSharedGuard {
     fn drop(&mut self) {
         unsafe { (*self.0).release_shared() };
+    }
+}
+
+impl Clone for RawSharedGuard {
+    fn clone(&self) -> Self {
+        unsafe {
+            (*self.0)
+                .shared(AccessKind::Any)
+                .expect("existing shares should always be cloneable")
+                .into_raw()
+        }
+    }
+}
+
+/// A temporarily upgraded guarded
+///
+/// This must not outlive the access controlled instance it was constructed
+/// from.
+
+pub struct RawUpgradedGuard(*const Access);
+
+impl RawUpgradedGuard {
+    pub(crate) unsafe fn from_shared(guard: &RawSharedGuard) -> Result<Self, AccessError> {
+        (*guard.0).release_shared();
+        let exclusive = match (*guard.0).exclusive(AccessKind::Any) {
+            Ok(e) => e,
+            Err(e) => {
+                std::mem::forget((*guard.0).shared(AccessKind::Any)?);
+                return Err(e.into());
+            }
+        };
+        let raw = exclusive.into_raw();
+        std::mem::forget(raw);
+
+        Ok(Self(guard.0))
+    }
+}
+
+impl Drop for RawUpgradedGuard {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.0).release_exclusive();
+            std::mem::forget(
+                (*self.0)
+                    .shared(AccessKind::Any)
+                    .expect("TODO[TSOLBERG]: This should be done inside the access"),
+            );
+        };
     }
 }
 

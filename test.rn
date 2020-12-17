@@ -1,0 +1,37 @@
+
+#[test]
+fn can_write_through_slice() {
+    let data = [1, 2, 3];
+    let s = data[1..2]; // Ref<data>
+    s[0] = 5;
+
+    assert_eq!(data, [1, 5, 3]);
+}
+
+#[test]
+fn can_take_multiple_slices() {
+    let data = [1, 2, 3]; 
+    let s = data[1..2]; // Ref<data>
+    let s2 = data[2..3]; // Ref<data>
+
+    assert_eq!(s.len(), 1);
+    assert_eq!(s2.len(), 1);
+}
+
+
+#[test]
+fn can_write_through_nested_slice() {
+    let d = [1, 2, 3];
+    let s1 = d[1..3]; // Ref<d>
+    let s2 = s1[1..2]; // Ref<d>
+    s2[0] = 5;        // Fundamentally sound but panics
+}
+
+#[test]
+fn can_write_with_uncle() {
+    let d = [1, 2, 3];
+    let s1 = d[0..2]; // Ref<d>
+    let s2 = d[1..3]; // Ref<d>
+    let s3 = s1[1..2]; // Ref<s1>
+    s3[0] = 10; // not caught but unsound
+}

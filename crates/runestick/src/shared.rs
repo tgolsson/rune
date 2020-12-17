@@ -1,5 +1,6 @@
 use crate::access::{
     Access, AccessError, AccessKind, BorrowMut, BorrowRef, RawExclusiveGuard, RawSharedGuard,
+    RawUpgradedGuard,
 };
 use crate::{Any, AnyObj, AnyObjError, Hash};
 use std::any;
@@ -808,10 +809,13 @@ impl<T: ?Sized> SharedBox<T> {
 }
 
 type DropFn = unsafe fn(*const ());
+type CloneFn = unsafe fn(*const ());
 
+#[derive(Clone)]
 struct RawDrop {
     data: *const (),
     drop_fn: DropFn,
+    clone_fn: CloneFn,
 }
 
 impl RawDrop {
@@ -824,11 +828,17 @@ impl RawDrop {
         return Self {
             data: inner.as_ptr() as *const (),
             drop_fn: drop_fn_impl::<T>,
+            clone_fn: clone_fn_impl::<T>,
         };
 
         unsafe fn drop_fn_impl<T>(data: *const ()) {
             let shared = data as *mut () as *mut SharedBox<T>;
             SharedBox::dec(shared);
+        }
+
+        unsafe fn clone_fn_impl<T>(data: *const ()) {
+            let shared = data as *mut () as *mut SharedBox<T>;
+            SharedBox::inc(shared);
         }
     }
 
@@ -842,7 +852,14 @@ impl RawDrop {
         return Self {
             data: inner.as_ptr() as *const (),
             drop_fn: drop_fn_impl,
+            clone_fn: clone_fn_impl,
         };
+
+        // This is unsound and will crash
+        unsafe fn clone_fn_impl(data: *const ()) {
+            let shared = data as *mut () as *mut SharedBox<AnyObj>;
+            SharedBox::inc(shared);
+        }
 
         unsafe fn drop_fn_impl(data: *const ()) {
             let shared = data as *mut () as *mut SharedBox<AnyObj>;
@@ -883,6 +900,17 @@ pub struct Ref<T: ?Sized> {
     guard: RawSharedGuard,
     inner: RawDrop,
     _marker: marker::PhantomData<T>,
+}
+
+impl<T: ?Sized> Clone for Ref<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data,
+            guard: self.guard.clone(),
+            inner: self.inner.clone(),
+            _marker: self._marker,
+        }
+    }
 }
 
 impl<T: ?Sized> Ref<T> {
@@ -973,6 +1001,52 @@ impl<T: ?Sized> Ref<T> {
         };
 
         (this.data, guard)
+    }
+
+    /// Attempts to temporarily upgrade this ref to a mutable borrow
+    ///
+    /// # Safety
+    ///
+    /// The returned borrow must not out live the returned guard, which is tied
+    /// to this instance.
+    pub fn upgrade(&self) -> Result<TempMut<T>, AccessError> {
+        unsafe {
+            let _guard = RawUpgradedGuard::from_shared(&self.guard)?;
+            Ok(TempMut {
+                data: self.data as *mut _,
+                _guard,
+
+                _marker: marker::PhantomData,
+            })
+        }
+    }
+}
+
+/// A strong mutable reference to the given type.
+pub struct TempMut<T: ?Sized> {
+    data: *mut T,
+    // Safety: it is important that the guard is dropped before `RawDrop`, since
+    // `RawDrop` might deallocate the `Access` instance the guard is referring
+    // to. This is guaranteed by: https://github.com/rust-lang/rfcs/pull/1857
+    _guard: RawUpgradedGuard,
+    _marker: marker::PhantomData<T>,
+}
+
+impl<T: ?Sized> ops::Deref for TempMut<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        // Safety: An owned mut holds onto a hard pointer to the data,
+        // preventing it from being dropped for the duration of the owned mut.
+        unsafe { &*self.data }
+    }
+}
+
+impl<T: ?Sized> ops::DerefMut for TempMut<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        // Safety: An owned mut holds onto a hard pointer to the data,
+        // preventing it from being dropped for the duration of the owned mut.
+        unsafe { &mut *self.data }
     }
 }
 
