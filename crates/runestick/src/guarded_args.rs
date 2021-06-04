@@ -56,3 +56,22 @@ macro_rules! impl_into_args {
 }
 
 repeat_macro!(impl_into_args);
+
+impl GuardedArgs for Vec<crate::Value> {
+    type Guard = ();
+
+    #[allow(unused)]
+    unsafe fn unsafe_into_stack(
+        self,
+        stack: &mut crate::Stack,
+    ) -> Result<Self::Guard, crate::VmError> {
+        for value in self {
+            stack.push(value);
+        }
+        Ok(())
+    }
+
+    fn count(&self) -> usize {
+        self.len()
+    }
+}
