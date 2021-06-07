@@ -98,3 +98,9 @@ impl Parse for Block {
         })
     }
 }
+
+impl crate::Peek for Block {
+    fn peek(p: &mut crate::Peeker<'_>) -> bool {
+        matches!(p.nth(0), K!['{'])
+    }
+}

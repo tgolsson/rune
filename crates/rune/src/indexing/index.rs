@@ -656,7 +656,10 @@ impl Index for ast::ItemFn {
 
         // Take and restore item nesting.
         let last = idx.nested_item.replace(self.descriptive_span());
-        self.body.index(idx)?;
+        if let Some(body) = self.body.as_mut() {
+            body.index(idx)?;
+        }
+
         idx.nested_item = last;
 
         let f = guard.into_function(span)?;
@@ -1430,6 +1433,44 @@ impl Index for ast::ItemImpl {
     }
 }
 
+impl Index for ast::ItemTrait {
+    fn index(&mut self, idx: &mut Indexer<'_>) -> CompileResult<()> {
+        if let Some(first) = self.attributes.first() {
+            return Err(CompileError::msg(
+                first,
+                "impl attributes are not supported",
+            ));
+        }
+
+        let mut guards = Vec::new();
+
+        if let Some(global) = &self.path.global {
+            return Err(CompileError::msg(
+                global,
+                "global scopes are not supported yet",
+            ));
+        }
+
+        for path_segment in self.path.as_components() {
+            let ident_segment = path_segment
+                .try_as_ident()
+                .ok_or_else(|| CompileError::msg(path_segment, "unsupported path segment"))?;
+            let ident = ident_segment.resolve(&idx.storage, &*idx.source)?;
+            guards.push(idx.items.push_name(ident.as_ref()));
+        }
+
+        let new = Arc::new(idx.items.item().clone());
+        let old = std::mem::replace(&mut idx.impl_item, Some(new));
+
+        for item_fn in &mut self.functions {
+            item_fn.index(idx)?;
+        }
+
+        idx.impl_item = old;
+        Ok(())
+    }
+}
+
 impl Index for ast::ItemMod {
     fn index(&mut self, idx: &mut Indexer<'_>) -> CompileResult<()> {
         if let Some(first) = self.attributes.first() {
@@ -1526,6 +1567,9 @@ impl Index for ast::Item {
             }
             ast::Item::Impl(item_impl) => {
                 item_impl.index(idx)?;
+            }
+            ast::Item::Trait(item_trait) => {
+                item_trait.index(idx)?;
             }
             ast::Item::Mod(item_mod) => {
                 item_mod.index(idx)?;

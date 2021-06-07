@@ -63,7 +63,12 @@ pub struct ItemFn {
     /// The arguments of the function.
     pub args: ast::Parenthesized<ast::FnArg, T![,]>,
     /// The body of the function.
-    pub body: ast::Block,
+    #[rune(optional)]
+    pub body: Option<ast::Block>,
+
+    /// Trailing semi if !body TODO[tsolberg]: enforce that trailing semi is not used on functions
+    #[rune(optional)]
+    pub semi: Option<T![;]>,
 }
 
 impl ItemFn {

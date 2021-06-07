@@ -112,6 +112,8 @@ pub enum CompileErrorKind {
         #[source]
         error: io::Error,
     },
+    #[error("missing implementation for function")]
+    MissingImpl, /* TODO[Tsolberg]: Add metadata here */
     #[cfg(compiler_v2)]
     #[error("failed to assemble ssa: {error}")]
     SsaError {

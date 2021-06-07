@@ -33,21 +33,30 @@ impl AssembleFn for ast::ItemFn {
             c.compile_pat_offset(pat, offset)?;
         }
 
-        if self.body.statements.is_empty() {
+        if self.body.is_none() {
+            return Err(CompileError::new(span, CompileErrorKind::MissingImpl));
+        }
+
+        let body = self
+            .body
+            .as_ref()
+            .expect("attempting to compile empty function");
+
+        if body.statements.is_empty() {
             let total_var_count = c.scopes.total_var_count(span)?;
             c.locals_pop(total_var_count, span);
             c.asm.push(Inst::ReturnUnit, span);
             return Ok(());
-        }
+        };
 
-        if !self.body.produces_nothing() {
-            self.body.assemble(c, Needs::Value)?.apply(c)?;
+        if !body.produces_nothing() {
+            body.assemble(c, Needs::Value)?.apply(c)?;
 
             let total_var_count = c.scopes.total_var_count(span)?;
             c.locals_clean(total_var_count, span);
             c.asm.push(Inst::Return, span);
         } else {
-            self.body.assemble(c, Needs::None)?.apply(c)?;
+            body.assemble(c, Needs::None)?.apply(c)?;
 
             let total_var_count = c.scopes.total_var_count(span)?;
             c.locals_pop(total_var_count, span);

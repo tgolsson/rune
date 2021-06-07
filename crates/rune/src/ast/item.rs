@@ -15,6 +15,8 @@ pub enum Item {
     Struct(Box<ast::ItemStruct>),
     /// An impl declaration.
     Impl(Box<ast::ItemImpl>),
+    /// A trait declaration.
+    Trait(Box<ast::ItemTrait>),
     /// A module declaration.
     Mod(Box<ast::ItemMod>),
     /// A const declaration.
@@ -44,6 +46,7 @@ impl Item {
             Self::Enum(item) => take(&mut item.attributes),
             Self::Struct(item) => take(&mut item.attributes),
             Self::Impl(item) => take(&mut item.attributes),
+            Self::Trait(item) => take(&mut item.attributes),
             Self::Mod(item) => take(&mut item.attributes),
             Self::Const(item) => take(&mut item.attributes),
             Self::MacroCall(item) => take(&mut item.attributes),
@@ -58,6 +61,7 @@ impl Item {
             Self::Enum(item) => &item.attributes,
             Self::Struct(item) => &item.attributes,
             Self::Impl(item) => &item.attributes,
+            Self::Trait(item) => &item.attributes,
             Self::Mod(item) => &item.attributes,
             Self::Const(item) => &item.attributes,
             Self::MacroCall(item) => &item.attributes,
@@ -76,6 +80,7 @@ impl Item {
             K![enum] => true,
             K![struct] => true,
             K![impl] => true,
+            K![trait] => true,
             K![async] => matches!(p.nth(1), K![fn]),
             K![fn] => true,
             K![mod] => true,
@@ -120,6 +125,10 @@ impl Item {
                     take(&mut visibility),
                 )?)),
                 K![impl] => Self::Impl(Box::new(ast::ItemImpl::parse_with_attributes(
+                    p,
+                    take(&mut attributes),
+                )?)),
+                K![trait] => Self::Trait(Box::new(ast::ItemTrait::parse_with_attributes(
                     p,
                     take(&mut attributes),
                 )?)),

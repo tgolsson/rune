@@ -4,7 +4,7 @@ use crate::parsing;
 use crate::shared;
 use std::fmt;
 
-/// This file has been generated from `assets\tokens.yaml`
+/// This file has been generated from `assets/tokens.yaml`
 /// DO NOT modify by hand!
 
 /// The `abstract` keyword.
@@ -3211,6 +3211,42 @@ impl macros::ToTokens for Tilde {
     }
 }
 
+/// The `trait` keyword.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Trait {
+    /// Associated token.
+    pub token: ast::Token,
+}
+
+impl crate::Spanned for Trait {
+    fn span(&self) -> runestick::Span {
+        self.token.span()
+    }
+}
+
+impl parsing::Parse for Trait {
+    fn parse(p: &mut parsing::Parser<'_>) -> Result<Self, parsing::ParseError> {
+        let token = p.next()?;
+
+        match token.kind {
+            ast::Kind::Trait => Ok(Self { token }),
+            _ => Err(parsing::ParseError::expected(&token, "trait")),
+        }
+    }
+}
+
+impl parsing::Peek for Trait {
+    fn peek(peeker: &mut parsing::Peeker<'_>) -> bool {
+        matches!(peeker.nth(0), ast::Kind::Trait)
+    }
+}
+
+impl macros::ToTokens for Trait {
+    fn to_tokens(&self, _: &macros::MacroContext, stream: &mut macros::TokenStream) {
+        stream.push(self.token);
+    }
+}
+
 /// The `true` keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct True {
@@ -3655,6 +3691,9 @@ macro_rules! T {
     (super) => {
         $crate::ast::generated::Super
     };
+    (trait) => {
+        $crate::ast::generated::Trait
+    };
     (true) => {
         $crate::ast::generated::True
     };
@@ -3881,6 +3920,7 @@ macro_rules! K {
     (static) => { $crate::ast::Kind::Static };
     (struct) => { $crate::ast::Kind::Struct };
     (super) => { $crate::ast::Kind::Super };
+    (trait) => { $crate::ast::Kind::Trait };
     (true) => { $crate::ast::Kind::True };
     (typeof) => { $crate::ast::Kind::TypeOf };
     (unsafe) => { $crate::ast::Kind::Unsafe };
@@ -4138,6 +4178,8 @@ pub enum Kind {
     Super,
     /// `~`.
     Tilde,
+    /// The `trait` keyword.
+    Trait,
     /// The `true` keyword.
     True,
     /// The `typeof` keyword.
@@ -4211,6 +4253,7 @@ impl Kind {
             "static" => Some(Self::Static),
             "struct" => Some(Self::Struct),
             "super" => Some(Self::Super),
+            "trait" => Some(Self::Trait),
             "true" => Some(Self::True),
             "typeof" => Some(Self::TypeOf),
             "unsafe" => Some(Self::Unsafe),
@@ -4325,6 +4368,7 @@ impl Kind {
             Self::Struct => "struct",
             Self::Super => "super",
             Self::Tilde => "~",
+            Self::Trait => "trait",
             Self::True => "true",
             Self::TypeOf => "typeof",
             Self::Underscore => "_",

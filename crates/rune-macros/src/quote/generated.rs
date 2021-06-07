@@ -1,6 +1,6 @@
 use crate::quote;
 
-/// This file has been generated from `assets\tokens.yaml`
+/// This file has been generated from `assets/tokens.yaml`
 /// DO NOT modify by hand!
 
 pub(crate) fn kind_from_ident(ident: &str) -> Option<quote::Kind> {
@@ -50,6 +50,7 @@ pub(crate) fn kind_from_ident(ident: &str) -> Option<quote::Kind> {
         "static" => Some(quote::Kind("Static")),
         "struct" => Some(quote::Kind("Struct")),
         "super" => Some(quote::Kind("Super")),
+        "trait" => Some(quote::Kind("Trait")),
         "true" => Some(quote::Kind("True")),
         "typeof" => Some(quote::Kind("TypeOf")),
         "unsafe" => Some(quote::Kind("Unsafe")),

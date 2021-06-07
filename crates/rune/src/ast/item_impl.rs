@@ -22,6 +22,12 @@ pub struct ItemImpl {
     pub impl_: T![impl],
     /// Path of the implementation.
     pub path: ast::Path,
+    /// The `for` keyword.
+    #[rune(optional)]
+    pub for_: Option<T![for]>,
+    /// The receiver type
+    #[rune(optional)]
+    pub receiver: Option<ast::Path>,
     /// The open brace.
     pub open: T!['{'],
     /// The collection of functions.
@@ -38,6 +44,8 @@ impl ItemImpl {
     ) -> Result<Self, ParseError> {
         let impl_ = parser.parse()?;
         let path = parser.parse()?;
+        let for_ = parser.parse()?;
+        let receiver = parser.parse()?;
         let open = parser.parse()?;
 
         let mut functions = vec![];
@@ -52,6 +60,8 @@ impl ItemImpl {
             attributes,
             impl_,
             path,
+            for_,
+            receiver,
             open,
             functions,
             close,

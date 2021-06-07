@@ -355,6 +355,10 @@
   doc: "`~`."
   punct: "~"
 - kind: keyword
+  variant: "Trait"
+  doc: "The `trait` keyword."
+  keyword: "trait"
+- kind: keyword
   variant: "True"
   doc: "The `true` keyword."
   keyword: "true"

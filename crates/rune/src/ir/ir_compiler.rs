@@ -172,7 +172,7 @@ impl IrCompile for ast::ItemFn {
             return Err(IrError::msg(arg, "unsupported argument in const fn"));
         }
 
-        let ir_scope = self.body.compile(c)?;
+        let ir_scope = self.body.as_ref().unwrap().compile(c)?;
 
         Ok(ir::IrFn {
             span: self.span(),
