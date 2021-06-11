@@ -26,6 +26,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
+pub(crate) struct ItemImplContext {
+    pub(crate) receiver: Arc<Item>,
+    pub(crate) trait_: Option<Arc<Item>>,
+}
+
 pub(crate) struct Indexer<'a> {
     /// The root URL that the indexed file originated from.
     pub(crate) root: Option<PathBuf>,
@@ -52,7 +57,8 @@ pub(crate) struct Indexer<'a> {
     /// The current module being indexed.
     pub(crate) mod_item: Arc<CompileMod>,
     /// Set if we are inside of an impl self.
-    pub(crate) impl_item: Option<Arc<Item>>,
+    pub(crate) impl_item: Option<ItemImplContext>,
+    pub(crate) trait_item: Option<Arc<Item>>,
     pub(crate) visitor: Rc<dyn CompileVisitor>,
     pub(crate) source_loader: Rc<dyn SourceLoader + 'a>,
     /// Indicates if indexer is nested privately inside of another item, and if
@@ -350,9 +356,11 @@ impl<'a> Indexer<'a> {
     where
         T: Parse,
     {
-        let id =
-            self.query
-                .insert_path(&self.mod_item, self.impl_item.as_ref(), &*self.items.item());
+        let id = self.query.insert_path(
+            &self.mod_item,
+            self.impl_item.as_ref().map(|ctx| &ctx.receiver),
+            &*self.items.item(),
+        );
         ast.path.id = Some(id);
 
         let item = self.query.get_item(ast.span(), self.items.id())?;
@@ -606,6 +614,27 @@ impl Index for ast::File {
 
 impl Index for ast::ItemFn {
     fn index(&mut self, idx: &mut Indexer<'_>) -> CompileResult<()> {
+        let is_in_trait_def = idx.trait_item.is_some();
+        let (receiver, trait_) = if is_in_trait_def {
+            (None, None)
+        } else {
+            match idx.impl_item.as_ref() {
+                // Some(itm) => match &itm {
+                //     item::Item::Impl(impl_) => {
+                //         if impl_.receiver.is_some() {
+                //             (false, true)
+                //         } else {
+                //             (true, false)
+                //         }
+                //     }
+                //     _ => panic!("invalid type of impl"),
+                // },
+                // None => (false, false),
+                Some(ctx) => (Some(ctx.receiver.clone()), ctx.trait_.clone()),
+                None => (None, None),
+            }
+        };
+
         let span = self.span();
         log::trace!("ItemFn => {:?}", idx.source.source(span));
 
@@ -656,9 +685,13 @@ impl Index for ast::ItemFn {
 
         // Take and restore item nesting.
         let last = idx.nested_item.replace(self.descriptive_span());
-        if let Some(body) = self.body.as_mut() {
+        let has_impl = if let Some(body) = self.body.as_mut() {
             body.index(idx)?;
-        }
+            true
+        } else {
+            let _ = self.semi.unwrap();
+            false
+        };
 
         idx.nested_item = last;
 
@@ -726,13 +759,13 @@ impl Index for ast::ItemFn {
                 ));
             }
 
-            let impl_item = idx.impl_item.as_ref().ok_or_else(|| {
+            let impl_item = receiver.or(trait_).ok_or_else(|| {
                 CompileError::new(span, CompileErrorKind::InstanceFunctionOutsideImpl)
             })?;
 
             let f = InstanceFunction {
                 ast: fun.ast,
-                impl_item: impl_item.clone(),
+                impl_item: receiver.unwrap().clone(),
                 instance_span: span,
                 call: fun.call,
             };
@@ -1413,15 +1446,38 @@ impl Index for ast::ItemImpl {
             ));
         }
 
-        for path_segment in self.path.as_components() {
+        let (receiver, trait_) = match &self.receiver {
+            Some(r) => (r, Some(&self.path)),
+            None => (&self.path, None),
+        };
+
+        for path_segment in receiver.as_components() {
             let ident_segment = path_segment
                 .try_as_ident()
                 .ok_or_else(|| CompileError::msg(path_segment, "unsupported path segment"))?;
             let ident = ident_segment.resolve(&idx.storage, &*idx.source)?;
             guards.push(idx.items.push_name(ident.as_ref()));
         }
+        let receiver = idx.items.item().clone();
 
-        let new = Arc::new(idx.items.item().clone());
+        let trait_ = if let Some(trait_) = trait_ {
+            for path_segment in trait_.as_components() {
+                let ident_segment = path_segment
+                    .try_as_ident()
+                    .ok_or_else(|| CompileError::msg(path_segment, "unsupported path segment"))?;
+                let ident = ident_segment.resolve(&idx.storage, &*idx.source)?;
+                guards.push(idx.items.push_name(ident.as_ref()));
+            }
+            Some(idx.items.item().clone())
+        } else {
+            None
+        };
+
+        let new = ItemImplContext {
+            receiver: Arc::new(receiver),
+            trait_: trait_.map(Arc::new),
+        };
+
         let old = std::mem::replace(&mut idx.impl_item, Some(new));
 
         for item_fn in &mut self.functions {
@@ -1438,7 +1494,7 @@ impl Index for ast::ItemTrait {
         if let Some(first) = self.attributes.first() {
             return Err(CompileError::msg(
                 first,
-                "impl attributes are not supported",
+                "trait attributes are not supported",
             ));
         }
 
@@ -1460,13 +1516,13 @@ impl Index for ast::ItemTrait {
         }
 
         let new = Arc::new(idx.items.item().clone());
-        let old = std::mem::replace(&mut idx.impl_item, Some(new));
+        let old = std::mem::replace(&mut idx.trait_item, Some(new));
 
         for item_fn in &mut self.functions {
             item_fn.index(idx)?;
         }
 
-        idx.impl_item = old;
+        idx.trait_item = old;
         Ok(())
     }
 }
@@ -1607,9 +1663,11 @@ impl Index for ast::Path {
         let span = self.span();
         log::trace!("Path => {:?}", idx.source.source(span));
 
-        let id = idx
-            .query
-            .insert_path(&idx.mod_item, idx.impl_item.as_ref(), &*idx.items.item());
+        let id = idx.query.insert_path(
+            &idx.mod_item,
+            idx.impl_item.as_ref().map(|v| &v.receiver),
+            &*idx.items.item(),
+        );
         self.id = Some(id);
 
         match self.as_kind() {

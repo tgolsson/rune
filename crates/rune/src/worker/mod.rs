@@ -126,6 +126,7 @@ impl<'a> Worker<'a> {
                         scopes: IndexScopes::new(),
                         mod_item,
                         impl_item: Default::default(),
+                        trait_item: Default::default(),
                         visitor: self.visitor.clone(),
                         source_loader: self.source_loader.clone(),
                         nested_item: None,

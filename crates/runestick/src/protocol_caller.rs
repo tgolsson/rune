@@ -1,7 +1,7 @@
 use crate::{GuardedArgs, Hash, Protocol, Stack, UnitFn, Value, Vm, VmError, VmErrorKind};
 
 /// Trait used for integrating an instance function call.
-pub(crate) trait ProtocolCaller {
+pub trait ProtocolCaller {
     /// Call the given protocol function.
     fn call_protocol_fn<A>(
         self,
@@ -16,7 +16,7 @@ pub(crate) trait ProtocolCaller {
 /// Use the global environment caller.
 ///
 /// This allocates its own stack and virtual machine for the call.
-pub(crate) struct EnvProtocolCaller;
+pub struct EnvProtocolCaller;
 
 impl ProtocolCaller for EnvProtocolCaller {
     fn call_protocol_fn<A>(

@@ -206,6 +206,7 @@ pub use crate::names::Names;
 pub use crate::object::Object;
 pub use crate::panic::Panic;
 pub use crate::protocol::Protocol;
+pub use crate::protocol_caller::{EnvProtocolCaller, ProtocolCaller};
 pub use crate::range::{Range, RangeLimits};
 pub use crate::shared::{Mut, RawMut, RawRef, Ref, Shared, SharedPointerGuard};
 pub use crate::stack::{Stack, StackError};

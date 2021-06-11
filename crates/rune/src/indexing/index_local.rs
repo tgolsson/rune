@@ -54,9 +54,11 @@ impl IndexLocal for ast::Path {
         let span = self.span();
         log::trace!("Ident => {:?}", idx.source.source(span));
 
-        let id = idx
-            .query
-            .insert_path(&idx.mod_item, idx.impl_item.as_ref(), &*idx.items.item());
+        let id = idx.query.insert_path(
+            &idx.mod_item,
+            idx.impl_item.as_ref().map(|impl_ctx| &impl_ctx.receiver),
+            &*idx.items.item(),
+        );
         self.id = Some(id);
 
         if let Some(ident) = self.try_as_ident_mut() {
